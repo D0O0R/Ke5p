@@ -1,4 +1,10 @@
-use std::env;
+use std::{
+    env,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use fastrand::shuffle;
 use reqwest::Client;
@@ -7,21 +13,32 @@ async fn cells(
     client: &Client,
     apis: &Vec<&str>,
     token: &str,
-    count: &mut usize,
+    count: &Arc<AtomicUsize>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for api in apis {
-        let resp = client
+        match client
             .get(*api)
             .header("Authorization", format!("Bearer {}", token))
             .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            println!("{}: success", *api);
-        } else {
-            println!("{}: {}", *api, resp.text().await?);
-            *count += 1;
-        };
+            .await
+        {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    println!("{}: success", api);
+                } else {
+                    println!(
+                        "{}: {}",
+                        api,
+                        resp.text().await.unwrap_or("Failed".to_string())
+                    );
+                    count.fetch_add(1, Ordering::Relaxed);
+                };
+            }
+            Err(e) => {
+                println!("{}: {}", api, e);
+                count.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
     Ok(())
 }
@@ -53,14 +70,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = env::var("ONE_TOKEN").expect("TOKEN_API is not set");
     let client = reqwest::Client::new();
 
-    let mut count = 0;
-
+    let count = Arc::new(AtomicUsize::new(0));
     let periods = fastrand::usize(50..80);
+
+    let mut tasks = vec![];
 
     for _ in 0..periods {
         shuffle(&mut apis);
-        cells(&client, &apis, &token, &mut count).await?;
+        let client = client.clone();
+        let apis = apis.clone();
+        let token = token.clone();
+        let count = Arc::clone(&count);
+        let task = tokio::spawn(async move {
+            cells(&client, &apis, &token, &count).await.unwrap();
+        });
+        tasks.push(task);
     }
-    println!("{}", count);
+
+    for task in tasks {
+        task.await?;
+    }
+
+    println!("{}", count.load(Ordering::Relaxed));
     Ok(())
 }
