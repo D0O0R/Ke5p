@@ -24,9 +24,9 @@ async fn cells(
         {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    println!("{}: success", api);
+                    eprintln!("{}: success", api);
                 } else {
-                    println!(
+                    eprintln!(
                         "{}: {}",
                         api,
                         resp.text().await.unwrap_or("Failed".to_string())
@@ -35,7 +35,7 @@ async fn cells(
                 };
             }
             Err(e) => {
-                println!("{}: {}", api, e);
+                eprintln!("{}: {}", api, e);
                 count.fetch_add(1, Ordering::Relaxed);
             }
         }
