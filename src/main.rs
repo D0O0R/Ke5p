@@ -17,8 +17,9 @@ async fn cells(
             .await?;
 
         if !resp.status().is_success() {
-            let url = resp.url().to_string();
-            println!("{}: {}", url, resp.text().await?);
+            println!("{}: success", *api);
+        } else {
+            println!("{}: {}", *api, resp.text().await?);
             *count += 1;
         };
     }
